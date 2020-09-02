@@ -3,6 +3,11 @@ import argparse
 import sys
 
 #Parse user input 
+
+cookiejar = requests.cookies.RequestsCookieJar()
+postdata = {}
+headers = ''
+
 parser = argparse.ArgumentParser()
 
 parser.add_argument('-m', '--method', type=str, metavar='', required=True, help='HTTP method to use', choices=['get','post'])
@@ -10,6 +15,7 @@ parser.add_argument('-u', '--url', type=str, metavar='', required=True, help='UR
     
 parser.add_argument('-p', '--proxy', type=str, metavar='', help='Specify proxy to send request through')
 parser.add_argument('-d', '--data', type=str, metavar='', help="Data to be sent for POST and PUT requests")    
+parser.add_argument('-c', '--cookie', type=str, metavar='', help="Specify cookie values")    
 parser.add_argument('-t', '--timeout', type=int, metavar='', default=3, help="Timeout in seconds to wait for response") 
 parser.add_argument('-g', '--generate', action='store_true', help='Only generate the html of the request')
 
@@ -69,11 +75,20 @@ def format_response(r):
 
 def get_request(url):
     try:
-        #check for proxy
+
+        #check for proxy and cookies
         if args.proxy: 
-            r = requests.get(url,timeout=args.timeout,proxies=args.proxy,verify=False)
+            if args.cookie: 
+                r = requests.get(url,timeout=args.timeout,proxies=args.proxy,verify=False,cookies=cookiejar)
+            else: 
+                r = requests.get(url,timeout=args.timeout,proxies=args.proxy,verify=False)
         else:
-            r = requests.get(url,timeout=args.timeout)
+            if args.cookie: 
+                r = requests.get(url,timeout=args.timeout,cookies=cookiejar)
+            else: 
+                r = requests.get(url,timeout=args.timeout)
+
+        #possible error in format? maybe timeout?
     except:
         print('\n[-] Error getting HTTP response. Make sure there are no syntax errors in supplied input.\n')
         sys.exit(1)
@@ -88,11 +103,20 @@ def get_request(url):
 
 def post_request(url, data):
     try:
-        #check for proxy
-        if args.proxy:
-            r = requests.post(url,data=data,timeout=args.timeout,proxies=args.proxy,verify=False)
+
+        #check for proxy and cookies
+        if args.proxy: 
+            if args.cookie: 
+                r = requests.post(url,data=data,timeout=args.timeout,proxies=args.proxy,verify=False,cookies=cookiejar)
+            else: 
+                r = requests.post(url,data=data,timeout=args.timeout,proxies=args.proxy,verify=False)
         else:
-            r = requests.post(url,data=data,timeout=args.timeout)
+            if args.cookie: 
+                r = requests.post(url,data=data,timeout=args.timeout,cookies=cookiejar)
+            else: 
+                r = requests.post(url,data=data,timeout=args.timeout)
+
+        #possible error in format? maybe timeout?
     except:
         print('\n[-] Error getting HTTP response. Check timeout and make sure there are no syntax errors in supplied input.\n')
         sys.exit(1)
@@ -110,28 +134,23 @@ def check_formatting():
         print('\n[-] data must be supplied when using a POST method\n')
         parser.print_help()
         sys.exit(1)
-
-def main():
     
-    check_formatting()
-    
-    #check for proxy
-    if(args.proxy):
-        args.proxy = { "http" : args.proxy,
-                       "https" : args.proxy.replace('http','http')
-                     }
-        print(args.proxy) 
-    #execute the appropriate http method
-    if(args.method == 'get'):
-        get_request(args.url)
-
-    if(args.method == 'post'):
-
-        #post user input should be in 'field=value' format
-        data = args.data.replace(' ', '').split(',')
-
-        postdata = {}
+    #if any cookies exist, format them and put them in the cookiejar
+    if(args.cookie):
+        cookies = args.cookie.replace(' ', '').split(',')  
         
+        for cookie in cookies:
+            cookie = cookie.split('=')
+            try:
+                cookiejar.set(cookie[0], cookie[1], domain=args.url.split('/',3)[2], path='/'+ args.url.split('/',3)[3])
+            except:
+                print('\n[-] error in cookie formatting. Ex: <field>=<value>,<field>=<value>,...\n')
+                sys.exit(1)
+    
+    #if any post data exist, format and put into dictionary
+    if(args.data):
+        data = args.data.replace(' ', '').split(',')
+    
         for entry in data:
             entry = entry.split('=')
             try:
@@ -140,6 +159,22 @@ def main():
                 print('\n[-] error in post data formatting. Ex: <field>=<value>,<field>=<value>,...\n')
                 sys.exit(1)
 
+def main():
+    
+    #format data recieved
+    check_formatting()
+    
+    #check for proxy
+    if(args.proxy):
+        args.proxy = { "http" : args.proxy,
+                       "https" : args.proxy.replace('http','http')
+                     } 
+
+    #execute the appropriate http method
+    if(args.method == 'get'):
+        get_request(args.url)
+
+    if(args.method == 'post'):
         post_request(args.url, postdata)
 
 #run program
